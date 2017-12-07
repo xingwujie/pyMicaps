@@ -1,15 +1,12 @@
 # -*- coding:utf-8 -*-
 
 import datetime
-from math import sqrt, fabs
+from math import sqrt, fabs, ceil, floor
 import os
 import numpy as np
 
 
 class Diamond4(object):
-    """
-
-    """
     diamond = 4
 
     def __init__(self, data_frame, data_parameters=None):
@@ -19,7 +16,7 @@ class Diamond4(object):
                 data_raw = [word for line in f.readlines() if line[:-1].strip()
                             for word in line.split()]  # 去除空行读入,将原文件分割成一维字符串数组
 
-                self.doc = data_raw[2]#.decode('gbk')  # 说明字符串
+                self.doc = data_raw[2]  # .decode('gbk')  # 说明字符串
 
                 # 日期时间处理
                 (year,  # 年
@@ -63,10 +60,12 @@ class Diamond4(object):
 
                 # 将数据的一些属性参数集合到一个字典中
                 self.parameters = {'doc': self.doc, 'year': self.year, 'month': self.month, 'day': self.day,
-                                   'hour': self.hour,'valid_period': self.valid_period,'start_time': self.start_time,
-                                   'valid_time': self.valid_time,'size_lon': self.size_lon, 'size_lat': self.size_lat,
-                                   'lon_start': self.lon_start, 'lon_end': self.lon_end, 'lat_start': self.lat_start,
-                                   'lat_end': self.lat_end, 'cols': self.cols, 'rows': self.rows,
+                                   'hour': self.hour, 'valid_period': self.valid_period, 'level': self.level,
+                                   'start_time': self.start_time, 'valid_time': self.valid_time,
+                                   'size_lon': self.size_lon,
+                                   'size_lat': self.size_lat, 'lon_start': self.lon_start, 'lon_end': self.lon_end,
+                                   'lat_start': self.lat_start, 'lat_end': self.lat_end, 'cols': self.cols,
+                                   'rows': self.rows,
                                    'contour_interval': self.contour_interval, 'contour_start': self.contour_start,
                                    'contour_end': self.contour_end, 'smooth': self.smooth, 'bold_line': self.bold_line}
                 del data_raw
@@ -76,7 +75,7 @@ class Diamond4(object):
             self.data = data_frame if isinstance(data_frame, list) else data_frame.flatten().tolist()
             self.parameters = data_parameters
             for key in data_parameters:
-                exec('self.'+ key + '=' + repr(data_parameters[key]))
+                exec('self.' + key + '=' + repr(data_parameters[key]))
 
         else:
             raise Exception('input parameters error!')
@@ -90,7 +89,6 @@ class Diamond4(object):
     def __sub__(self, other):
         if self.rows == other.rows and self.cols == self.cols:
             return [x - y for x, y in zip(self.data, other.data)]
-
 
     def value(self, row, col):
         '''将格点数据看成self.cols*self.nums_lat的二维数组，返回第row行，第col列的值，
@@ -139,10 +137,6 @@ class Diamond4(object):
 
         return extracted_values
 
-    def extract_station_value(self, lon_lat_s, method):
-        '提取站点数据'
-        pass
-
     def to_esri_ascii(self, out_name):
         with open(out_name, 'w') as f:
             y_start = self.lat_end if self.size_lat < 0  else self.lat_start
@@ -153,13 +147,13 @@ class Diamond4(object):
             if self.size_lat < 0:
                 f.write(' '.join(map(str, self.data)))
             else:
-                for i in xrange(self.rows - 1, -1, -1):
+                for i in range(self.rows - 1, -1, -1):
                     f.write(' '.join(map(str, self.data[i * self.cols:(i + 1) * self.cols])))
                     f.write('\n')  # 必须加换行符，因为' '.join最后还多了一个空格，arcgis不能根据列数自动计算
         try:
             import arcpy
         except ImportError:
-            print("""warning: you have no Esri's arcpy module, using to_esri_ascii function,
+            print("""warning: you have no Esri's arcpy module, using to_esri_ascii method,
                     you can still get the result, but without the associate coordinate information.
                     you can use Esri's software like Arcmap to import the result and add the coordinate which is
                     WGS1984""")
@@ -168,25 +162,47 @@ class Diamond4(object):
             sr = arcpy.SpatialReference('WGS 1984')
             arcpy.DefineProjection_management(out_name, sr)
 
-    def write_to_diamond4_txt(self, out_name):
-        # with open(out_name) as f:
-        #     # year = self.start_time.strftime('%y')
-        #     # month =
-        #     f.write('diamond4 ' + self.doc + '\n')
-        #     f.write(' '.join([self.]))
-        pass
+    def to_file(self, out_name, formatted=False):
+        with open(out_name, 'w') as f:
+            f.write('diamond 4 ' + self.doc + '\n')
+            f.write(' '.join([self.year, self.month, self.day, self.hour, self.valid_period, self.level, '\n']))
 
-    def calc_stats(self):
-        pass
+            f.write(' '.join(
+                ['%.2f' % i for i in
+                 [self.size_lon, self.size_lat, self.lon_start, self.lon_end, self.lat_start, self.lat_end]] +
+                ['%d' % i for i in [self.cols, self.rows]] +
+                ['%.2f' % i for i in
+                 [self.contour_interval, self.contour_start, self.contour_end, self.smooth, self.bold_line]] +
+                ['\n']))
+
+            if not formatted:
+                f.write(' '.join(['%.2f' % i for i in self.data]))
 
     def to_numpy(self):
         return np.array(self.data).reshape(self.rows, self.cols)
 
+    def max(self):
+        return max(self.data)
+
+    def min(self):
+        return min(self.data)
+
+    def calc_stats(self):
+        pass
+
+    def extract_station_value(self, lon_lat_s, method):
+        '提取站点数据'
+        pass
+
 
 if __name__ == "__main__":
-    d = Diamond4('D:/000')
-    print(d.doc)
-    d.doc = '换句话'
-    print(d.parameters['doc'])
-    #todo 属性改变需要引起self.parameter改变
-    print(d.doc)
+    # d0 = Diamond4('D:/000')
+    # d1 = Diamond4('D:/024')
+    # d1_0 = Diamond4(d1-d0, d1.parameters)
+    # d1_0.contour_start = floor(d1_0.min())
+    # d1_0.contour_end = ceil(d1_0.max())
+    # d1_0.to_file('D:/d1_0.txt')
+    d = Diamond4('D:/2T')
+    d.contour_start = floor(d.min())
+    d.contour_end = ceil(d.max())
+    d.to_file('D:/2t.txt')
