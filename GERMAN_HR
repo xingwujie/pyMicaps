@@ -1,0 +1,15 @@
+APCP	累积总降水
+GEOPOTENTIAL	位势高度
+PRMSL	海平面气压
+RAIN06	6小时降水
+RAIN12	12小时降水
+RAIN24	24小时降水
+RH	相对湿度
+SOIL_TEMPERATURE	土壤温度
+TCDC	总云量
+THETASE	假相当位温
+TMP	温度
+UGRD	U分量
+VGRD	V分量
+VVEL	P坐标垂直速度
+WIND	风场
