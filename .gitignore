@@ -3,6 +3,7 @@
 
 # 其他
 getDatafromGDS/
+swi/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
