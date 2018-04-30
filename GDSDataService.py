@@ -5,6 +5,7 @@ import os, sys, time
 from datetime import datetime, timedelta
 import xml.etree.ElementTree as ET
 import threading
+import struct
 
 if sys.version_info[0] == 3:
     import http.client as httplib
@@ -111,11 +112,16 @@ class GDSDataService(object):
         else:
             raise Exception('http connection error!')
 
-    def get_data(self, directory, file_name):
+    def get_data(self, path, file_name=None):
         """
         获取directory目录下文件名为file_name的二进制数据
-        #todo 一个参数也可以的情况
         """
+        if not file_name:
+            directory = os.path.dirname(path)
+            file_name = os.path.basename(path)
+        else:
+            directory = path
+
         status, response = self._get_http_result(self._get_concate_url("getData", directory, file_name, ""))
         byte_array_result = DataBlock_pb2.ByteArrayResult()
 
@@ -306,19 +312,21 @@ class GDSDataService(object):
                     
                 else: #不是文件夹说明已经进入最终文件所在目录，直接退出，可以加速很多
                     break
-    
+
             
 if __name__ == '__main__':
 
-    with GDSDataService("10.69.72.112", 8080) as gds:
+
         start = time.clock()
 
         # ***********************测试程序*********************************"
+        with GDSDataService("10.69.72.112", 8080) as gds:
+            gds.get_data('ECMWF_HR/2T/18043008.000')
         #for i in gds.get_file_list('GERMAN_HR/APCP','18030620'):
         #    print(i)
         #print(list(gds.get_file_list('GERMAN_HR/APCP/18030620.000')))
-        for i in gds.walk('GERMAN_HR'):
-            print(i)
+        #for i in gds.walk('GERMAN_HR'):
+        #    print(i)
         #print(gds._recur_nums,gds._request_nums)
         # squential_test()
         #print(gds.is_directory('ECMWF_ENSEMBLE_PRODUCT/GRID_PROBABILITY/RAIN24/60.0MM/18030320.234'))
@@ -331,6 +339,7 @@ if __name__ == '__main__':
         # gds.bulk_download('ECMWF_HR','D:/ECMWF')
         # for i in gds.get_directory('ECMWF_HR','backup','12','micapsdata.xml'):
         #     print(i)
+
         # ***********************测试程序*********************************"
         end = time.clock()
         elapsed = end - start
