@@ -41,6 +41,7 @@ class Grid(object):
          self.type  # 数据类型, 4为模式标量数据，11为模式矢量数据，与原系统diamond 4和diamond 11含义一致
          ) = struct.unpack('4s h', byte_arrays[0:6])
 
+        # C的struct结构字节存在对齐问题，故必须分开解码
         (model_name,  # 模式名称, 建议采用全大写字母表示模式名称，不建议使用汉字。
          element,  # 物理量
          description,  # 附加描述信息
@@ -75,6 +76,10 @@ class Grid(object):
 
         data_num = self.latitude_grid_number * self.longitude_grid_number
         self.data = struct.unpack('%sf' % data_num, byte_arrays[278:])
+
+        # 注意start_time和valid_time没有统一规定，要看具体情况
+        self.start_time = datetime.datetime(int(self.year), int(self.month), int(self.day), int(self.hour))
+        self.valid_time = self.start_time + datetime.timedelta(hours=int(self.period))
 
     def _parse_strings(self, str_lines):
 
@@ -459,11 +464,6 @@ if __name__ == "__main__":
     # d1_0.isoline_end_value = ceil(d1_0.max())
     # d1_0.to_file('D:/d1_0.txt')
     #d = Grid('D:/Desktop/18042720.003')
-    #d = Grid(r'Y:\ECMWF_HR\2T\999\18042720.000')
-    d = Grid('ECMWF_HR/TMP_2M/18043008.000')
-    print(d.description,
-          d.dx,
-          d.dy,
-          d.cols,
-          d.rows,
-          d[0,0])
+    d = Grid(r'Y:\ECMWF_HR\2T\999\18042720.000')
+    #d = Grid('ECMWF_HR/TMP_2M/18043008.012')
+    print(d.description)
