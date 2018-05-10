@@ -4,6 +4,7 @@
 # 其他
 getDatafromGDS/
 swi/
+config.ini
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -67,7 +67,7 @@ class DataQuery(Ice.Application):
                     raise RuntimeError("Invalid proxy")
                 else:
                     ok = True
-                    print("Ice Checked!")
+                    #print("Ice Checked!")
             except:
                 count = count + 1
                 ok = False
@@ -78,7 +78,7 @@ class DataQuery(Ice.Application):
 
     def destroy(self):
         if self.ic:
-            print("Ice Destory!")
+            #print("Ice Destory!")
             try:
                 self.ic.destroy()
             except Exception as e:
