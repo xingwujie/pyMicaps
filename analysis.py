@@ -117,9 +117,9 @@ if __name__ == "__main__":
     # d = Grid('ECMWF_HR/TMP_2M/18043008.012')
     data_source = ['ECMWF_HR/TMP_2M']
 
-    series = max_min_model_temp('18050720',data_source, stations, (20,24))
+    series = max_min_model_temp('18050920',data_source, stations, (20,24))
 
-    r = model_error_max_min_temp('18050920', series)
+    r = model_error_max_min_temp('18051020', series)
 
     pd.set_option('display.float_format', lambda x: '%7.1f'%x)
 

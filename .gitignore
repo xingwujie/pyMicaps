@@ -1,10 +1,11 @@
-# PyCharm
+﻿# PyCharm
 .idea/
 
 # 其他
 getDatafromGDS/
 swi/
-config.ini
+data/
+config/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

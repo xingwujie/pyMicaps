@@ -32,7 +32,7 @@ class Grid(object):
                         self._parse_strings(f.readlines())
 
         else:  # 直接从GDS分布式服务器调取
-            with GDSDataService("10.69.72.112", 8080) as gds:
+            with GDSDataService() as gds:
                 byte_arrays = gds.get_data(data_frame)
                 self._unpack_bytes(byte_arrays)
 
@@ -331,6 +331,14 @@ class Grid(object):
 
 
 def get_file_list(start_time, data_source):
+    """
+    获取data_source下所有以start_time为起报时的文件，data_source可以包含多个不同类型的数据源列表，
+    start_time: 起报时间
+    data_source: 数据源列表（也可是元组形式），其中每项必须是包含数据的最终目录，
+        可以包含不同种类的数据源，可以是本地数据，如m3文件，mdfs文件，也可以是上述两种混合的
+        也可以是gds类型的数据目录。如果数据源中包含同名文件，优先选取在data_source中靠前的数据源
+    :return:
+    """
     # todo 考虑改写成生成器形式
 
     file_list = []
@@ -351,7 +359,7 @@ def get_file_list(start_time, data_source):
     return file_list
 
 
-def extract_time_series(start_time, data_source, stations, interpolation='IDW', sql=None):
+def extract_time_series(start_time, data_source, stations, interpolation='IDW', save=False):
     """
     start_time: 起报时间,必须以'yymmddhh'的形式给出
     param station: 插值站点位置
@@ -361,19 +369,28 @@ def extract_time_series(start_time, data_source, stations, interpolation='IDW', 
     interpolation: 插值方法
     return:
     """
+
     records = []
     lon_lat_s = [i.lon_lat for i in stations]
-    for f_path in get_file_list(start_time, data_source):
+    file_list = get_file_list(start_time, data_source)
+    for f_path in file_list:
         data = Grid(f_path)
-        record = data.IDW(lon_lat_s)
+        record = data.grid_to_station(lon_lat_s, interpolation)
         record.append(data.valid_time)
         records.append(record)
 
     series = pd.DataFrame.from_records(records, index=len(stations))
     series.columns = [i.name for i in stations]
     series.index.name = 'valid_time'
+    series = series.sort_index()
 
-    return series.sort_index()
+    if save:
+        model_name = data.model_name
+        element = data.element
+        save_path = '-'.join(['data/series',start_time, model_name, element, interpolation])
+        series.to_pickle(save_path)
+
+    return series
 
 class Diamond4(object):
     diamond = 4
@@ -490,26 +507,32 @@ if __name__ == "__main__":
     #data_source = ['Y:/GRAPES_MESO/T2M_4']
     # d = Grid(r'Y:\ECMWF_HR\2T\999\18050620.000')
     # d = Grid('ECMWF_HR/TMP_2M/18043008.012')
-    data_source = ['GRAPES_MESO_HR/TMP/2M_ABOVE_GROUND']
+    data_source = ['ECMWF_HR/TMP_2M']#'Y:/ECMWF_HR/2T/999',
     #for i in get_file_list('18050708', data_source):
     #    print(Grid(i).timezone)
-    #series = extract_time_series('18050708',data_source, stations)
+    pd.set_option('display.max_columns', 500)
+    pd.set_option('display.width',1000)
+    pd.set_option('display.float_format', lambda x: '%7.1f'%x)
+    series = extract_time_series('18051008',data_source, stations, save=True)
 
-    lon_lat_s = [i.lon_lat for i in stations]
-    d1 = Grid('ECMWF_HR/TMP_2M/18051008.030')
-    r1 = d1.nearest_neighbor(lon_lat_s)
-    d2 = Grid('ECMWF_HR/TMP_2M/18051008.033')
-    r2 = d2.nearest_neighbor(lon_lat_s)
+    print(series)
 
-    r = []
-    for i,j in zip(r1,r2):
-        if i>j:
-            r.append(i)
-        else:
-            r.append(j)
 
-    for i, j in zip(stations, r):
-        print(i.name,': ', '%7.1f'%j)
+    # lon_lat_s = [i.lon_lat for i in stations]
+    # d1 = Grid('ECMWF_HR/TMP_2M/18051008.030')
+    # r1 = d1.nearest_neighbor(lon_lat_s)
+    # d2 = Grid('ECMWF_HR/TMP_2M/18051008.033')
+    # r2 = d2.nearest_neighbor(lon_lat_s)
+    #
+    # r = []
+    # for i,j in zip(r1,r2):
+    #     if i>j:
+    #         r.append(i)
+    #     else:
+    #         r.append(j)
+    #
+    # for i, j in zip(stations, r):
+    #     print(i.name,': ', '%7.1f'%j)
 
      # ***********************测试程序*********************************"
     end = time.clock()

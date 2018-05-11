@@ -5,7 +5,7 @@ if __name__ == "__main__":
     start = time.clock()
 
     # ***********************测试程序*********************************"
-    with GDSDataService("10.69.72.112", 8080) as gds:
+    with GDSDataService() as gds:
         print(list(gds.get_file_list('ECMWF_HR/TMP_2M', '18043008')))
     #for i in gds.get_file_list('GERMAN_HR/APCP','18030620'):
     #    print(i)

@@ -1,8 +1,18 @@
 import sys, os, urllib, socket
 import traceback
 import urllib.request
-
+import  configparser
 import Ice, cma.cimiss
+
+
+#获取CIMISS地址信息和账号信息
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+config = configparser.ConfigParser()
+config.read(os.path.join(BASE_DIR,'config/config.ini'))
+ip = config['CIMISS_MUSIC']['ip']
+port = config['CIMISS_MUSIC'].getint('port')
+user_id = config['CIMISS_MUSIC']['user_id']
+password = config['CIMISS_MUSIC']['password']
 
 
 class DataQuery(Ice.Application):
@@ -10,8 +20,7 @@ class DataQuery(Ice.Application):
     encapsulate ice interfaces
     '''
 
-    def __init__(self, serverIp="10.69.89.55", serverPort=1888,
-                       userId="BEZZ_BFXX_XXOBS", pwd="Micaps53986", configFile="client.config"):
+    def __init__(self, serverIp=ip, serverPort=port, userId=user_id, pwd=password, configFile="client.config"):
         '''
         Constructor
         '''
@@ -159,59 +168,4 @@ class DataQuery(Ice.Application):
 
 
 if __name__ == "__main__":
-    client = DataQuery()
-    #    retArray2D = client.callAPI_to_array2D("user_nordb", "user_nordb_pwd1", "getSurfEleByTime",\
-    #                                    {'dataCode':"SURF_CHN_MUL_HOR",\
-    #                                     'elements':"Station_ID_C,PRE_1h,PRS,RHU,VIS,WIN_S_Avg_2mi,WIN_D_Avg_2mi,Q_PRS",\
-    #                                     'times':"20141224000000",\
-    #                                     'orderby': "Station_ID_C:ASC",\
-    #                                     'limitCnt': "20000" })
-    #    print retArray2D
 
-    #    retGridArray2D = client.callAPI_to_gridArray2D("user_nordb", "user_nordb_pwd1", "getNafpTimeSerialByPoint",\
-    #                                    {'dataCode':'NAFP_T639_FOR_FTM_LOW_NEHE',\
-    #                                     'fcstEle':'TEM',\
-    #                                     'time':'20141017000000',\
-    #                                     'fcstLevel': '1000',\
-    #                                     'latLons':'0/0,10/10',\
-    #                                     'minVT' : '0',\
-    #                                     'maxVT' : '240'})
-    #    print retGridArray2D
-
-    #    result = client.callAPI_to_saveAsFile("user_nordb","user_nordb_pwd1", "getSurfEleByTime",\
-    #                                    {'dataCode':"SURF_CHN_MUL_HOR",\
-    #                                     'elements':"Station_ID_C,PRE_1h,PRS,RHU,VIS,WIN_S_Avg_2mi,WIN_D_Avg_2mi,Q_PRS",\
-    #                                     'times':"20141224000000",\
-    #                                     'orderby': "Station_ID_C:ASC",\
-    #                                     'limitCnt': "20000" },'json','data.txt')
-    #    print result
-
-    #    result = client.callAPI_to_fileList("user_nordb", "user_nordb_pwd1", "getSevpFileByTime",\
-    #                                    {'dataCode':"SEVP_WEFC_PRE_LOCT",\
-    #                                     'times':"20141210000000,20141210010000"})
-    #    print result
-
-    #    result = client.callAPI_to_downFile("user_nordb", "user_nordb_pwd1", "getSevpFileByTime",\
-    #                                    {'dataCode':"SEVP_WEFC_PRE_LOCT",\
-    #                                     'times':"20141220000000,20141210010000"}, "./")
-    #    print result
-
-
-    # store
-    result = client.callAPI_to_storeArray2D("user_nordb", "user_nordb_pwd1", "deleteStationData", \
-                                            {'dataCode': "SEVP_WEFC_ACPP_STORE", \
-                                             'KeyEles': "Datetime,Station_Id_C"}, \
-                                            [['20150114060000', '54323']])
-    print(result)
-
-    # python二维字符数组例子
-    inArray2D1 = [
-        ['54511', '2015', '09', '21', '10', '999.8', '1056', '56', '20150921100000'], \
-        ['54512', '2015', '09', '21', '10', '999.8', '1056', '44', '20150921100000'], \
-        ['54513', '2015', '09', '21', '10', '999.8', '1056', '77', '20150921100000']
-    ]
-    result = client.callAPI_to_storeSerializedStr("user_nordb", "user_nordb_pwd1", "deleteStationData", \
-                                                  {'dataCode': "SEVP_WEFC_ACPP_STORE", \
-                                                   'KeyEles': "Datetime,Station_Id_C"}, \
-                                                  "20150114060000,54323;20150114060000,54326")
-    print(result)

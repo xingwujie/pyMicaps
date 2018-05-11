@@ -5,7 +5,7 @@ import os, sys, time
 from datetime import datetime, timedelta
 import xml.etree.ElementTree as ET
 import threading
-
+import configparser
 
 if sys.version_info[0] == 3:
     import http.client as httplib
@@ -13,9 +13,18 @@ else:
     import httplib
 
 
+#获取分布式MICAPS的GDS服务器地址和端口号
+#todo 读取配置信息的方法还要完善一下
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+config = configparser.ConfigParser()
+config.read(os.path.join(BASE_DIR,'config/config.ini'))
+ip = config['MICAPS_MDFS_GDS']['ip']
+port = config['MICAPS_MDFS_GDS'].getint('port')
+
+
 class GDSDataService(object):
-    def __init__(self, gds_ip, gds_port):
-        self.http_client = httplib.HTTPConnection(gds_ip, gds_port, timeout=120) #多线程下载必须重开连接
+    def __init__(self, gds_ip=ip, gds_port=port):
+        self.http_client = httplib.HTTPConnection(gds_ip, gds_port, timeout=120)  # 多线程下载必须重开连接
         self.gds_ip = gds_ip
         self.gds_port = gds_port
         # 用于多线程下载
@@ -61,7 +70,7 @@ class GDSDataService(object):
         """
         返回http请求结果的多线程版，主要用于多线程数据下载
         """
-        http_client = httplib.HTTPConnection(self.gds_ip, self.gds_port, timeout=120) #多线程下载必须重开连接
+        http_client = httplib.HTTPConnection(self.gds_ip, self.gds_port, timeout=120)  # 多线程下载必须重开连接
         self.http_clients_pool.append(http_client)
 
         http_client.request('GET', url)
@@ -236,7 +245,7 @@ class GDSDataService(object):
         for th in threads:
             th.start()
 
-        for th in threads: # 让主线程等待其他线程，不能将join和start放在同一个循环中，否则实际上只启动了单个线程
+        for th in threads:  # 让主线程等待其他线程，不能将join和start放在同一个循环中，否则实际上只启动了单个线程
             th.join()
 
     @staticmethod
@@ -320,7 +329,8 @@ if __name__ == '__main__':
         start = time.clock()
 
         # ***********************测试程序*********************************"
-        with GDSDataService("10.69.72.112", 8080) as gds:
+
+        with GDSDataService() as gds:
             print(list(gds.get_file_list('ECMWF_HR/TMP_2M', '18043008')))
         #for i in gds.get_file_list('GERMAN_HR/APCP','18030620'):
         #    print(i)
