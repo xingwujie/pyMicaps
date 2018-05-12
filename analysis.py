@@ -1,56 +1,135 @@
 # -*- coding:utf-8 -*-
 # @author: ZHU Feng
 
-from ios import Grid, extract_time_series
+from ios import Grid
 from datetime import datetime, timedelta
-import time, json
+import os, time, json
 from collections import namedtuple
 import pandas as pd
 from cma.cimiss.DataQueryClient import DataQuery
+from cma.micaps.GDSDataService import GDSDataService
 
 
-def max_min_model_temp(start_time, data_source, stations, time_span, interpolation='IDW', sql=None):
+def get_file_list(start_time, data_source):
     """
-    start_time:模式数据的起报时间
-    data_source:
-    stations:
-    time_span:(start_hour, span_hours)以起始时刻和跨度小时数给出的统计间隔
-    interpolation:
-    sql:
-    :return:返回的是一个列表，列表中的每一项是一个pandas的df，表示一个时间间隔上的各站点的最高、最低气温
-    这个df有两行，第一行时间间隔内的是最低温度，第二行是最高温度，
-    列数跟statons的个数相同，列名即站名，df的索引是时间间隔的起始、终止值
+    获取data_source下所有以start_time为起报时的文件，data_source可以包含多个不同类型的数据源列表，
+    start_time: 起报时间
+    data_source: 数据源列表（也可是元组形式），其中每项必须是包含数据的最终目录，
+        可以包含不同种类的数据源，可以是本地数据，如m3文件，mdfs文件，也可以是上述两种混合的
+        也可以是gds类型的数据目录。如果数据源中包含同名文件，优先选取在data_source中靠前的数据源
+    :return:
     """
-    series_data = extract_time_series(start_time,data_source, stations)
-    start_hour, span_hours = time_span
-    start_time = datetime.strptime(start_time, '%y%m%d%H')
+    # todo 考虑改写成生成器形式
 
-    delta_hours = start_hour-start_time.hour
-    delta_hours = delta_hours if delta_hours > 0 else 0
-    t0 = start_time + timedelta(hours = delta_hours)
+    file_list = []
+    for dir in data_source:
+        if os.path.isabs(dir):
+            files = os.listdir(dir)
+            file_list.extend(
+                [os.path.join(dir, f) for f in files
+                 if f.startswith(start_time) and f not in [os.path.basename(each) for each in file_list]]
+            )  # 前面目录中的模式产品文件优先
+        else:
+            with GDSDataService() as gds:
+                files = list(gds.get_file_list(dir, start_time))
+                file_list.extend(
+                    [os.path.join(dir, f) for f in files
+                     if f not in [os.path.basename(each) for each in file_list]]
+                )
+    return file_list
 
-    max_min_list = []
-    while t0 < series_data.index[-1]:
-        t1 = t0 + timedelta(hours=span_hours)
 
-        span_data = series_data[t0: t1]
+def extract_time_series(start_time, data_source, stations, interpolation='IDW', save=False):
+    """
+    start_time: 起报时间,必须以'yymmddhh'的形式给出
+    param station: 插值站点位置
+    data_source: 数据源列表，列表中的每项必须是包含数据的最终目录，
+        可以包含不同种类的数据源，可以是本地数据，如m3文件，mdfs文件，也可以是上述两种混合的
+        也可以是gds类型的数据目录
+    interpolation: 插值方法
+    return: 一个dataframe, 索引是时间，列是
+    """
 
-        min = span_data.min()
-        max = span_data.max()
-        df_max_min = pd.DataFrame([min,max])
-        df_max_min.index=[t0,t1]
+    records = []
+    lon_lat_s = [i.lon_lat for i in stations]
+    file_list = get_file_list(start_time, data_source)
+    for f_path in file_list:
+        data = Grid(f_path)
+        record = data.grid_to_station(lon_lat_s, interpolation)
+        record.append(data.valid_time)
+        records.append(record)
 
-        max_min_list.append(df_max_min)
+    series = pd.DataFrame.from_records(records, index=len(stations))
+    series.columns = [i.name for i in stations]
+    series.index.name = 'valid_time'
+    series = series.sort_index()
+
+    if save:
+        model_name = data.model_name  # todo 模式名的处理还要进一步完善
+        element = data.element
+        save_path = '-'.join(['data/series',start_time, model_name, element, interpolation])
+        series.to_pickle(save_path)
+
+    return series
+
+
+def calculate_span_series(series_data, start_hour, span_hours, stat_option, skip_incomplete_span=False):
+    """
+    在时间序列数据基础上计算固定时间间隔上的统计信息
+    series_data: 时间序列数据
+    start_hour: 时间间隔的开始时刻，范围是[0: 23]
+    span_hours: 时间间隔的小时数,
+    stats_method: 时间间隔的统计方法, 不同方法直接以空格分割
+    skip_incomplete_span:是否跳过不完整的时间间隔
+    return:返回的是一个列表，列表中的每一项是一个pandas的df，表示一个时间间隔上的各站点的统计信息，统计信息与stat_option参数对应，
+    默认这个df有两行，第一行时间间隔内的是最低值，第二行是最高值，列数跟statons的个数相同，列名即站名，df有一个额外的列表类型的
+    time_span属性，表示时间间隔的起始、终止值
+    """
+    # 统计方法字典
+    stat_methods = {'max': pd.DataFrame.max,
+                    'min': pd.DataFrame.min,
+                    'mean': pd.DataFrame.mean,
+                    'median': pd.DataFrame.median,
+                    'std': pd.DataFrame.std,
+                    'var': pd.DataFrame.var,
+                     }
+
+    start_time = series_data.index[0]   # 时间序列的开始时间
+
+    t0 = datetime(start_time.year, start_time.month, start_time.day, start_hour)  #时间间隔初始起始时间
+
+    span_list = []  # 存储最终结果的列表
+    while t0 < series_data.index[-1]:           # 当时间间隔的起始时间小于时间序列数据的最后一个时间，则循环计算
+        t1 = t0 + timedelta(hours=span_hours)   # 时间间隔的终止时间
+
+        span_data = series_data[t0: t1]         # 时间序列数据上一个时间间隔内的数据
+
+        # 对时间间隔数据分别做不同方法的统计
+        stats_list = []                         # 临时存储单个统计信息的列表
+        for method in stat_option.split():
+            r = stat_methods[method](span_data)
+            stats_list.append(r)
+
+        span_stats = pd.DataFrame(stats_list)   # 将所有统计组合到一个dataframe中
+
+        # 为这个时间间隔的统计增加时间段信息,注意不能赋予t0,t1
+        span_stats.time_span = [span_data.index[0], span_data.index[-1]]
+
+        span_list.append(span_stats)
 
         t0 = t1
 
-    return max_min_list
+    if skip_incomplete_span:  # 判断首尾的两个span的时间间隔是否等于span_hours参数，不等于说明时间间隔不完整，舍去这个span
+        for i in [0, -1]:
+            if int((span_list[i].time_span[1] - span_list[i].time_span[0]).seconds/3600) != span_hours:
+                span_list.pop(i)
+
+    return span_list
 
 
 def max_min_real_temp_24h(end_time, admin_code='410700'):
 
-    end_time = datetime.strptime(end_time, '%y%m%d%H')-timedelta(hours=8)
-    end_time = datetime.strftime(end_time, '%Y%m%d%H%M%S')
+    end_time = (datetime.strptime(end_time, '%y%m%d%H')-timedelta(hours=8)).strftime('%Y%m%d%H%M%S')  # 转换成世界时
     client = DataQuery()
 
     # 接口ID
@@ -80,15 +159,22 @@ def model_error_max_min_temp(now_time, model_max_min_list):
     result = []
     for span in model_max_min_list:
 
-        if span.index[1] <= now_time:
-            real = max_min_real_temp_24h(datetime.strftime(span.index[1], '%y%m%d%H'))
-            span = span.reset_index(drop=True)
-            result.append(span-real)
+        if span.time_span[1] <= now_time:
+            real = max_min_real_temp_24h(datetime.strftime(span.time_span[1], '%y%m%d%H'))
+            #span = span.reset_index(drop=True)
+            error = span - real
+            error.time_span = span.time_span
+            result.append(error)
 
     return result
 
 
 if __name__ == "__main__":
+
+    pd.set_option('display.max_columns', 500)
+    pd.set_option('display.width',1000)
+    pd.set_option('display.float_format', lambda x: '%7.1f'%x)
+
     start = time.clock()
     # ***********************测试程序*********************************"
 
@@ -115,21 +201,21 @@ if __name__ == "__main__":
     #data_source = ['Y:/GRAPES_MESO/T2M_4']
     # d = Grid(r'Y:\ECMWF_HR\2T\999\18050620.000')
     # d = Grid('ECMWF_HR/TMP_2M/18043008.012')
-    data_source = ['ECMWF_HR/TMP_2M']
+    data_source = ['Y:/ECMWF_HR/2T/999']
 
-    series = max_min_model_temp('18050920',data_source, stations, (20,24))
-
-    r = model_error_max_min_temp('18051020', series)
-
-    pd.set_option('display.float_format', lambda x: '%7.1f'%x)
-
-    station_names = [s.name for s in stations]
-    r = [i[station_names] for i in r]
-    min = pd.concat([i[0:1] for i in r])
-    max = pd.concat([i[1:] for i in r])
-
-    print('Tmin:\n', min)
-    print('Tmax:\n', max)
+    # series = max_min_model_temp('18050920',data_source, stations, (20,24))
+    #
+    # r = model_error_max_min_temp('18051020', series)
+    #
+    # pd.set_option('display.float_format', lambda x: '%7.1f'%x)
+    #
+    # station_names = [s.name for s in stations]
+    # r = [i[station_names] for i in r]
+    # min = pd.concat([i[0:1] for i in r])
+    # max = pd.concat([i[1:] for i in r])
+    #
+    # print('Tmin:\n', min)
+    # print('Tmax:\n', max)
 
 
     # df1 = max_min_real_temp_24h('18050920')
@@ -138,3 +224,17 @@ if __name__ == "__main__":
     # print(df2)
     # print(pd.concat([df1[0:1], df2[0:1]]))
     # print(pd.concat([df1[1:], df2[1:]]))
+
+
+    time_series = extract_time_series('18050820',data_source, stations) #save=True)
+    span_series = calculate_span_series(time_series, 20, 24, 'min max')
+    error = model_error_max_min_temp('18051020',span_series)
+    for i in error:
+        print(i)
+
+
+
+    # ***********************测试程序*********************************"
+    end = time.clock()
+    elapsed = end - start
+    print("Time used: %.6fs, %.6fms\n" % (elapsed, elapsed * 1000))

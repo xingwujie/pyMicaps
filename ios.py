@@ -330,67 +330,6 @@ class Grid(object):
             return self.nearest_neighbor(lon_lat_s)
 
 
-def get_file_list(start_time, data_source):
-    """
-    获取data_source下所有以start_time为起报时的文件，data_source可以包含多个不同类型的数据源列表，
-    start_time: 起报时间
-    data_source: 数据源列表（也可是元组形式），其中每项必须是包含数据的最终目录，
-        可以包含不同种类的数据源，可以是本地数据，如m3文件，mdfs文件，也可以是上述两种混合的
-        也可以是gds类型的数据目录。如果数据源中包含同名文件，优先选取在data_source中靠前的数据源
-    :return:
-    """
-    # todo 考虑改写成生成器形式
-
-    file_list = []
-    for dir in data_source:
-        if os.path.isabs(dir):
-            files = os.listdir(dir)
-            file_list.extend(
-                [os.path.join(dir, f) for f in files
-                 if f.startswith(start_time) and f not in [os.path.basename(each) for each in file_list]]
-            )  # 前面目录中的模式产品文件优先
-        else:
-            with GDSDataService("10.69.72.112", 8080) as gds:
-                files = list(gds.get_file_list(dir, start_time))
-                file_list.extend(
-                    [os.path.join(dir, f) for f in files
-                     if f not in [os.path.basename(each) for each in file_list]]
-                )
-    return file_list
-
-
-def extract_time_series(start_time, data_source, stations, interpolation='IDW', save=False):
-    """
-    start_time: 起报时间,必须以'yymmddhh'的形式给出
-    param station: 插值站点位置
-    data_source: 数据源列表，列表中的每项必须是包含数据的最终目录，
-        可以包含不同种类的数据源，可以是本地数据，如m3文件，mdfs文件，也可以是上述两种混合的
-        也可以是gds类型的数据目录
-    interpolation: 插值方法
-    return:
-    """
-
-    records = []
-    lon_lat_s = [i.lon_lat for i in stations]
-    file_list = get_file_list(start_time, data_source)
-    for f_path in file_list:
-        data = Grid(f_path)
-        record = data.grid_to_station(lon_lat_s, interpolation)
-        record.append(data.valid_time)
-        records.append(record)
-
-    series = pd.DataFrame.from_records(records, index=len(stations))
-    series.columns = [i.name for i in stations]
-    series.index.name = 'valid_time'
-    series = series.sort_index()
-
-    if save:
-        model_name = data.model_name
-        element = data.element
-        save_path = '-'.join(['data/series',start_time, model_name, element, interpolation])
-        series.to_pickle(save_path)
-
-    return series
 
 class Diamond4(object):
     diamond = 4
@@ -507,15 +446,13 @@ if __name__ == "__main__":
     #data_source = ['Y:/GRAPES_MESO/T2M_4']
     # d = Grid(r'Y:\ECMWF_HR\2T\999\18050620.000')
     # d = Grid('ECMWF_HR/TMP_2M/18043008.012')
-    data_source = ['ECMWF_HR/TMP_2M']#'Y:/ECMWF_HR/2T/999',
+    data_source = ['Y:/ECMWF_HR/2T/999']#'Y:/ECMWF_HR/2T/999',
     #for i in get_file_list('18050708', data_source):
     #    print(Grid(i).timezone)
     pd.set_option('display.max_columns', 500)
     pd.set_option('display.width',1000)
     pd.set_option('display.float_format', lambda x: '%7.1f'%x)
-    series = extract_time_series('18051008',data_source, stations, save=True)
 
-    print(series)
 
 
     # lon_lat_s = [i.lon_lat for i in stations]

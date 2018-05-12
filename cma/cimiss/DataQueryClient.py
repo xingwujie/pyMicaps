@@ -169,3 +169,4 @@ class DataQuery(Ice.Application):
 
 if __name__ == "__main__":
 
+    pass
