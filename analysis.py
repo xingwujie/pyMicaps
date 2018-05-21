@@ -47,7 +47,7 @@ def extract_time_series(start_time, data_source, stations, interpolation='IDW', 
         可以包含不同种类的数据源，可以是本地数据，如m3文件，mdfs文件，也可以是上述两种混合的
         也可以是gds类型的数据目录
     interpolation: 插值方法
-    return: 一个dataframe, 索引是时间，列是
+    return: 一个pandas的dataframe, 索引是时间，列是根据stations中站点信息提取的各个站点上的时间序列值，以站名为列名
     """
 
     records = []
@@ -73,13 +73,13 @@ def extract_time_series(start_time, data_source, stations, interpolation='IDW', 
     return series
 
 
-def calculate_span_series(series_data, start_hour, span_hours, stat_option, skip_incomplete_span=False):
+def calculate_span_series(series_data, start_hour, span_hours, stat_option='min max', skip_incomplete_span=False):
     """
     在时间序列数据基础上计算固定时间间隔上的统计信息
     series_data: 时间序列数据
     start_hour: 时间间隔的开始时刻，范围是[0: 23]
     span_hours: 时间间隔的小时数,
-    stats_method: 时间间隔的统计方法, 不同方法直接以空格分割
+    stats_method: 时间间隔的统计方法, 不同方法之间以空格分割
     skip_incomplete_span:是否跳过不完整的时间间隔
     return:返回的是一个列表，列表中的每一项是一个pandas的df，表示一个时间间隔上的各站点的统计信息，统计信息与stat_option参数对应，
     默认这个df有两行，第一行时间间隔内的是最低值，第二行是最高值，列数跟statons的个数相同，列名即站名，df有一个额外的列表类型的
@@ -112,7 +112,7 @@ def calculate_span_series(series_data, start_hour, span_hours, stat_option, skip
 
         span_stats = pd.DataFrame(stats_list)   # 将所有统计组合到一个dataframe中
 
-        # 为这个时间间隔的统计增加时间段信息,注意不能赋予t0,t1
+        # 为这个时间间隔的统计增加时间段信息,注意不能赋予t0,t1  todo 给df添加额外属性引起警告，考虑另一种方法
         span_stats.time_span = [span_data.index[0], span_data.index[-1]]
 
         span_list.append(span_stats)
@@ -129,7 +129,19 @@ def calculate_span_series(series_data, start_hour, span_hours, stat_option, skip
 
 def max_min_real_temp_24h(end_time, admin_code='410700'):
 
-    end_time = (datetime.strptime(end_time, '%y%m%d%H')-timedelta(hours=8)).strftime('%Y%m%d%H%M%S')  # 转换成世界时
+    """
+    获取各站点过去24小时的最高、最低气温，以行政区划为单元
+    end_time: 终止时间
+    admin_code: 行政区域代码，默认是新乡
+    return: 一个pandas的dataframe，第一行是最低温度，第二行是最高温度，以站名为列名
+    """
+    if isinstance(end_time, str):
+        end_time = (datetime.strptime(end_time, '%y%m%d%H')-timedelta(hours=8)).strftime('%Y%m%d%H%M%S')  # 转换成世界时
+    elif isinstance(end_time, datetime):
+        end_time = (end_time - timedelta(hours=8)).strftime('%Y%m%d%H%M%S')
+    else:
+        raise TypeError
+
     client = DataQuery()
 
     # 接口ID
@@ -153,14 +165,14 @@ def max_min_real_temp_24h(end_time, admin_code='410700'):
     return result
 
 
-def model_error_max_min_temp(now_time, model_max_min_list):
+def model_error_max_min_temp(now_time, max_min_temp_span_series):
 
     now_time = datetime.strptime(now_time, '%y%m%d%H')
     result = []
-    for span in model_max_min_list:
-
-        if span.time_span[1] <= now_time:
-            real = max_min_real_temp_24h(datetime.strftime(span.time_span[1], '%y%m%d%H'))
+    for span in max_min_temp_span_series:
+        t_end = span.time_span[1]
+        if t_end <= now_time:
+            real = max_min_real_temp_24h(t_end)
             #span = span.reset_index(drop=True)
             error = span - real
             error.time_span = span.time_span
@@ -226,11 +238,13 @@ if __name__ == "__main__":
     # print(pd.concat([df1[1:], df2[1:]]))
 
 
-    time_series = extract_time_series('18050820',data_source, stations) #save=True)
-    span_series = calculate_span_series(time_series, 20, 24, 'min max')
-    error = model_error_max_min_temp('18051020',span_series)
-    for i in error:
-        print(i)
+    #time_series = extract_time_series('18050820',data_source, stations) #save=True)
+    #span_series = calculate_span_series(time_series, 20, 24, 'min max')
+    #error = model_error_max_min_temp('18051020',span_series)
+    station_names = [s.name for s in stations]
+    r = max_min_real_temp_24h(datetime(2018,5,15,8))
+
+    print(r[station_names])
 
 
 
