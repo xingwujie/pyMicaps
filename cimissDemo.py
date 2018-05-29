@@ -1,5 +1,4 @@
-import datetime
-from cma.cimiss.DataQueryClient import DataQuery
+from cma.cimiss import DataQuery
 import json
 import pandas as pd
 

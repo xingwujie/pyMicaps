@@ -1,6 +1,6 @@
 # -*- coding:utf-8 -*-
 
-from . import DataBlock_pb2
+from . import data_block_pb2
 import os, sys, time
 from datetime import datetime, timedelta
 import xml.etree.ElementTree as ET
@@ -86,7 +86,7 @@ class GDSDataService(object):
         例：get_latest_data_name('ECMWF_HR/TMP/850','*.240')
         """
         status, response = self._get_http_result(self._get_concate_url("getLatestDataName", directory, "", filter_))
-        string_result = DataBlock_pb2.StringResult()
+        string_result = data_block_pb2.StringResult()
 
         if status == 200:
             string_result.ParseFromString(response)
@@ -107,7 +107,7 @@ class GDSDataService(object):
                                 注意不能是get_file_list('/GERMAN_HR')
         """
         status, response = self._get_http_result(self._get_concate_url("getFileList", directory, "", ""))
-        mapping_result = DataBlock_pb2.MapResult()
+        mapping_result = data_block_pb2.MapResult()
 
         if status == 200:
             mapping_result.ParseFromString(response)
@@ -132,7 +132,7 @@ class GDSDataService(object):
             directory = path
 
         status, response = self._get_http_result(self._get_concate_url("getData", directory, file_name, ""))
-        byte_array_result = DataBlock_pb2.ByteArrayResult()
+        byte_array_result = data_block_pb2.ByteArrayResult()
 
         if status == 200:
             byte_array_result.ParseFromString(response)
@@ -150,7 +150,7 @@ class GDSDataService(object):
         """
 
         status, response = self._get_http_result_threading(self._get_concate_url("getData", directory, file_name, ""))
-        byte_array_result = DataBlock_pb2.ByteArrayResult()
+        byte_array_result = data_block_pb2.ByteArrayResult()
 
         if status == 200:
             byte_array_result.ParseFromString(response)
@@ -168,7 +168,7 @@ class GDSDataService(object):
         '''
         status, response = self._get_http_result(self._get_concate_url("getFileInfo", path, "", ""))
 
-        file_info_result = DataBlock_pb2.FileInfoResult()
+        file_info_result = data_block_pb2.FileInfoResult()
 
         if status == 200:
             file_info_result.ParseFromString(response)
@@ -323,34 +323,4 @@ class GDSDataService(object):
                     break
 
             
-if __name__ == '__main__':
 
-
-        start = time.clock()
-
-        # ***********************测试程序*********************************"
-
-        with GDSDataService() as gds:
-            print(list(gds.get_file_list('ECMWF_HR/TMP_2M', '18043008')))
-        #for i in gds.get_file_list('GERMAN_HR/APCP','18030620'):
-        #    print(i)
-        #print(list(gds.get_file_list('GERMAN_HR/APCP/18030620.000')))
-        #for i in gds.walk('GERMAN_HR'):
-        #    print(i)
-        #print(gds._recur_nums,gds._request_nums)
-        # squential_test()
-        #print(gds.is_directory('ECMWF_ENSEMBLE_PRODUCT/GRID_PROBABILITY/RAIN24/60.0MM/18030320.234'))
-        #print(gds.get_latest_data_name('ECMWF_HR/TMP/850','*.240'))
-        # gds.download_data_sequential('D:/ECMWF','ECMWF_HR/TMP/850','18012308')
-        # gds.bulk_download('D:/ECMWF','ECMWF_HR/TMP/850','171217')
-        # gds.download_data('D:/ECMWF', 'ECMWF_HR/TMP/850', '171218')
-
-        # write_to_xml(gds, 'ECMWF_HR', 'D:/micapsdata.xml')
-        # gds.bulk_download('ECMWF_HR','D:/ECMWF')
-        # for i in gds.get_directory('ECMWF_HR','backup','12','micapsdata.xml'):
-        #     print(i)
-
-        # ***********************测试程序*********************************"
-        end = time.clock()
-        elapsed = end - start
-        print("Time used: %.6fs, %.6fms\n" % (elapsed, elapsed * 1000))

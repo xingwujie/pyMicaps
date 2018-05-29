@@ -1,4 +1,4 @@
-from cma.micaps.GDSDataService import GDSDataService
+from cma.micaps import GDSDataService
 import time
 
 if __name__ == "__main__":
@@ -6,8 +6,9 @@ if __name__ == "__main__":
 
     # ***********************测试程序*********************************"
     with GDSDataService() as gds:
-        print(list(gds.get_file_list('ECMWF_HR/TMP_2M', '18043008')))
-    #for i in gds.get_file_list('GERMAN_HR/APCP','18030620'):
+        #print(list(gds.get_file_list('ECMWF_HR/TMP_2M', '18052708')))
+        print(gds.get_data('ECMWF_HR/TMP_2M', '18052708.000'))
+    #for i in gds.get_file_'ECMWF_HR/TMP_2M', '18052708')list('GERMAN_HR/APCP','18030620'):
     #    print(i)
     #print(list(gds.get_file_list('GERMAN_HR/APCP/18030620.000')))
     #for i in gds.walk('GERMAN_HR'):

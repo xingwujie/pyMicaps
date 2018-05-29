@@ -1,13 +1,13 @@
 # -*- coding:utf-8 -*-
 # @author: ZHU Feng
 
-from ios import Grid
+from micaps import Grid
 from datetime import datetime, timedelta
 import os, time, json
 from collections import namedtuple
 import pandas as pd
-from cma.cimiss.DataQueryClient import DataQuery
-from cma.micaps.GDSDataService import GDSDataService
+from cma.cimiss import DataQuery
+from cma.micaps import GDSDataService
 
 
 def get_file_list(start_time, data_source):
@@ -39,6 +39,10 @@ def get_file_list(start_time, data_source):
     return file_list
 
 
+def search_files_by_valid_time(valid_time, data_source, condition=''):
+    pass
+
+
 def extract_time_series(start_time, data_source, stations, interpolation='IDW', save=False):
     """
     start_time: 起报时间,必须以'yymmddhh'的形式给出
@@ -65,7 +69,7 @@ def extract_time_series(start_time, data_source, stations, interpolation='IDW', 
     series = series.sort_index()
 
     if save:
-        model_name = data.model_name  # todo 模式名的处理还要进一步完善
+        model_name = data.model_name
         element = data.element
         save_path = '-'.join(['data/series',start_time, model_name, element, interpolation])
         series.to_pickle(save_path)

@@ -1,9 +1,10 @@
 # -*- coding:utf-8 -*-
 
-from GDSDataService import GDSDataService
+from .gds_data_service import GDSDataService
 import xml.etree.ElementTree as ET
 import os, time
 from datetime import datetime,timedelta
+
 
 def get_mdfs_data_dirs(gds, source, no_unclipped=True):
     """
@@ -62,7 +63,7 @@ def create_data_node(gds, data_source, data_name):
         if dir1 in ('WIND', 'HGT', 'TMP', 'PRMSL', 'RH'):
             dir1_elem.attrib['priority'] = 'True'
 
-        # 一些可以通过二次计算得到的预报只下载，不备份 #todo 哪些数据可以二次计算获得 需要进一步明确
+        # 一些可以通过二次计算得到的预报只下载，不备份   # todo 哪些数据可以二次计算获得 需要进一步明确
         if dir1[-2:] in ('03', '06', '12', '24'):
             dir1_elem.attrib['backup'] = 'False'
         if dir1 in ('DEPR', 'CIN', 'CONDENSATION_LAYER_PRESSURE', 'K_INDEX', 'LI', 'SHOWALTER_INDEX'):

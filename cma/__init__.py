@@ -9,3 +9,4 @@ import cma.cimiss.apiinterface_ice
 
 # Submodules:
 from . import cimiss
+from . import micaps

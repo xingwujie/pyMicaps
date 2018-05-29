@@ -8,3 +8,4 @@ Ice.updateModule("cma.cimiss")
 import cma.cimiss.apiinterface_ice
 
 # Submodules:
+from .data_query_client import DataQuery

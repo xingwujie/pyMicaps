@@ -1,7 +1,7 @@
 import sys, os, urllib, socket
 import traceback
 import urllib.request
-import  configparser
+import configparser
 import Ice, cma.cimiss
 
 
@@ -166,7 +166,3 @@ class DataQuery(Ice.Application):
                                                           params, inString)
             return result
 
-
-if __name__ == "__main__":
-
-    pass
