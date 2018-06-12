@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import xml.etree.ElementTree as ET
 import threading
 import configparser
-
+from queue import Queue
 if sys.version_info[0] == 3:
     import http.client as httplib
 else:
@@ -21,21 +21,31 @@ config.read(os.path.join(BASE_DIR,'config/config.ini'))
 ip = config['MICAPS_MDFS_GDS']['ip']
 port = config['MICAPS_MDFS_GDS'].getint('port')
 
+class AcquireAbnormalData(Exception):
+    def __init__(self,err='获取的数据为空，请求数据不存在或超过时间期限'):
+        Exception.__init__(self,err)
+
 
 class GDSDataService(object):
+
+    total_connect_times = 0
+    total_request_times = 0
+
     def __init__(self, gds_ip=ip, gds_port=port):
         self.http_client = httplib.HTTPConnection(gds_ip, gds_port, timeout=120)  # 多线程下载必须重开连接
         self.gds_ip = gds_ip
         self.gds_port = gds_port
+
         # 用于多线程下载
         self.http_clients_pool = []
-        self.DOWNLOAD_LIST = []
-        self.lock = threading.Lock()
+        #self.download_queue = Queue()
 
-        # 记录请求次数
-        # self._request_nums = 0
+        # 不使用列表自己实现线程通讯，主要原因是不方便动态生成下载列表
+        # self.DOWNLOAD_LIST = []
+        # self.lock = threading.Lock()
+
         # 记录连接次数
-        # self._connect_nums = 1
+        self.add_one_connect()
 
     def __enter__(self):
         return self
@@ -63,7 +73,9 @@ class GDSDataService(object):
 
         self.http_client.request('GET', url)
         response = self.http_client.getresponse()
-        # self._request_nums += 1
+
+        self.add_one_request()
+
         return response.status, response.read()
 
     def _get_http_result_threading(self, url):
@@ -76,8 +88,9 @@ class GDSDataService(object):
         http_client.request('GET', url)
         response = http_client.getresponse()
 
-        # self._connect_nums += 1
-        # self._request_nums += 1
+        self.add_one_connect()
+        self.add_one_request()
+
         return response.status, response.read()
 
     def get_latest_data_name(self, directory, filter_):
@@ -98,7 +111,7 @@ class GDSDataService(object):
         else:
             raise Exception('http connection error!')
 
-    def get_file_list(self, directory, filter_=''):
+    def get_file_list(self, directory, filter_='', is_absolute=False, no_unclipped=True):
         """
         获取directory下级目录的所有目录或文件列表，过滤条件为以filter_开头,
         返回结果是列表生成器
@@ -114,7 +127,18 @@ class GDSDataService(object):
 
             if mapping_result is not None:
                 file_list_results = mapping_result.resultMap
-                file_list = (file for file in file_list_results if file.startswith(filter_))
+                if no_unclipped:
+                    if is_absolute:
+                        file_list = (os.path.join(directory,file) for file in file_list_results
+                                     if (file.startswith(filter_) and 'UNCLIPPED' not in file))
+                    else:
+                        file_list = (file for file in file_list_results if (file.startswith(filter_) and 'UNCLIPPED' not in file))
+                else:
+                    if is_absolute:
+                        file_list = (os.path.join(directory,file) for file in file_list_results if file.startswith(filter_))
+                    else:
+                        file_list = (file for file in file_list_results if file.startswith(filter_))
+
                 return file_list
             else:
                 raise Exception('Google protobuf error!')
@@ -123,7 +147,7 @@ class GDSDataService(object):
 
     def get_data(self, path, file_name=None):
         """
-        获取directory目录下文件名为file_name的二进制数据
+        获取path目录下文件名为file_name的二进制数据, 或者文件文件直接由path给出
         """
         if not file_name:
             directory = os.path.dirname(path)
@@ -138,16 +162,24 @@ class GDSDataService(object):
             byte_array_result.ParseFromString(response)
 
             if byte_array_result is not None:
+                if not byte_array_result.byteArray:
+                    raise AcquireAbnormalData()
+
                 return byte_array_result.byteArray
             else:
                 raise Exception('Google protobuf error!')
         else:
             raise Exception('http connection error!')
 
-    def _get_data_threading(self, directory, file_name):
+    def _get_data_threading(self, path, file_name=None):
         """
-        get_data的多线程版本，由于多线程下载，获取directory目录下文件名为file_name的二进制数据
+        get_data的多线程版本，由于多线程下载，获取path目录下文件名为file_name的二进制数据, 或者文件文件直接由path给出
         """
+        if not file_name:
+            directory = os.path.dirname(path)
+            file_name = os.path.basename(path)
+        else:
+            directory = path
 
         status, response = self._get_http_result_threading(self._get_concate_url("getData", directory, file_name, ""))
         byte_array_result = data_block_pb2.ByteArrayResult()
@@ -156,6 +188,9 @@ class GDSDataService(object):
             byte_array_result.ParseFromString(response)
 
             if byte_array_result is not None:
+                if not byte_array_result.byteArray:
+                    raise AcquireAbnormalData()
+
                 return byte_array_result.byteArray
             else:
                 raise Exception('Google protobuf error!')
@@ -181,7 +216,8 @@ class GDSDataService(object):
         else:
             raise Exception('http connection error!')
 
-    def is_directory(self, path):
+    # todo print(gds.is_dir('APCP'))也返回true bug！
+    def is_dir(self, path):
         if self._get_file_info(path) == -1:
             return True
         else:
@@ -193,100 +229,100 @@ class GDSDataService(object):
         else:
             return False
 
-    def _download_data_sequential(self, output_directory, directory, filter_=''):
+
+    def _produce_download_queue(self, to_download):
+        self.download_queue = Queue()  # Queue必须每次下载重新初始化，否则第二次下载无法终止
+        for item in to_download:
+            self.download_queue.put(item)
+
+
+    def _download_worker(self, output_directory, overwrite, output_path_fun):
+        # todo 尝试使用协程进行下载
+        """
+        用于多线程下载方法 download_data_threading 内部调用
+        """
+        #start = time.clock()
+        while True:
+            file_path = self.download_queue.get()
+            if file_path is None:
+                break
+
+            try:
+                byte_array = self._get_data_threading(file_path)
+            except AcquireAbnormalData():
+                continue
+            # todo 错误处理需要进一步细化
+            except Exception:
+                self.download_queue.put(file_path)
+                continue
+
+            # 输出路径处理：
+            file_name = os.path.basename(file_path)
+            if not output_path_fun:
+                output_dir = os.path.join(output_directory, os.path.dirname(file_path))
+            else:
+                output_dir = output_path_fun(file_path)
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+
+            # 下载写入文件
+            if overwrite or not os.path.isfile(os.path.join(output_dir, file_name)):
+                with open(os.path.join(output_dir, file_name), 'wb') as f:
+                    f.write(byte_array)
+
+            self.download_queue.task_done()
+
+
+    def download(self, output_directory, to_download, overwrite=False, output_path_fun=None, thread_n=8):
+        """
+        多线程下载，下载directory目录下文件名以filter开头的数据文件，下载保存目录为output_directory
+        默认线程数目为8
+        :param output_directory: 数据下载输出的根目录
+        :param to_download: 等待下载的列表或可以生成列表的函数，下载列表中的元素必须是指定数据的全路径，如'ECMWF_HR/TMP_2M/18060208.012'
+        :param overwrite: 是否覆盖已经存在的同名数据, 默认不覆盖
+        :param thread_n: 多线程下载默认启用的线程数目，默认为8
+        :param output_path_fun: 对输出路径进行控制的函数，默认不需要提供，默认输出路径与下载列表元素的全路径相同
+        :return: 无
+        """
+        # todo output_path_fun需要处理
+
+        if isinstance(to_download, str):
+            # todo 处理字符串格式的下载列表请求
+            to_download = self.get_file_list('ECMWF_LR/PRMSL','18060320',True)
+
+        produce_thread = threading.Thread(target=self._produce_download_queue, args=(to_download,))   # 注意参数必须是元组，一个元素要加逗号
+        produce_thread.start()
+
+        consume_threads = []
+        for i in range(thread_n):
+            th = threading.Thread(target=self._download_worker, args=(output_directory, overwrite, output_path_fun))
+            th.start()
+            consume_threads.append(th)
+
+
+        # 等待下载列表生成完毕
+        produce_thread.join()
+
+        # 等待下载任务完成
+        self.download_queue.join()
+
+        # 终止工作线程
+        for i in range(thread_n):
+            self.download_queue.put(None)
+
+        for th in consume_threads:  # 让主线程等待其他线程，不能将join和start放在同一个循环中，否则实际上只启动了单个线程
+            th.join()
+
+
+    def download_sequential(self, output_directory, directory, filter_):
         """
         顺序下载，下载directory目录下文件名以filter开头的数据文件，下载保存目录为output_directory
         """
-        start = time.clock()
-
         for file_name in self.get_file_list(directory, filter_):
             byte_array = self.get_data(directory, file_name)
             with open(os.path.join(output_directory, file_name), 'wb') as f:
                 f.write(byte_array)
 
-        end = time.clock()
-        elapsed = end - start
-        print("Time used: %.6fs, %.6fms\n" % (elapsed, elapsed * 1000))
-
-    def _download_data_threading(self, output_directory, directory):
-        """
-        用于多线程下载方法 download_data_threading 内部调用
-        """
-        start = time.clock()
-        while True:
-            if not self.DOWNLOAD_LIST:
-                break
-
-            self.lock.acquire()
-            file_name = self.DOWNLOAD_LIST.pop()
-            self.lock.release()
-
-            byte_array = self._get_data_threading(directory, file_name)
-            with open(os.path.join(output_directory, file_name), 'wb') as f:
-                f.write(byte_array)
-
-        end = time.clock()
-        elapsed = end - start
-        print("%s Time used: %.6fs, %.6fms\n" % (threading.current_thread(), elapsed, elapsed * 1000))
-
-    def download_data(self, output_directory, directory, filter_='', thread_n=8):
-        """
-        多线程下载，下载directory目录下文件名以filter开头的数据文件，下载保存目录为output_directory
-        默认线程数目为8
-        """
-
-        self.DOWNLOAD_LIST = list(self.get_file_list(directory, filter_))
-
-        threads = []
-        for i in range(thread_n):
-            th = threading.Thread(target=self._download_data_threading, args=(output_directory, directory))
-            threads.append(th)
-
-        for th in threads:
-            th.start()
-
-        for th in threads:  # 让主线程等待其他线程，不能将join和start放在同一个循环中，否则实际上只启动了单个线程
-            th.join()
-
-    @staticmethod
-    def get_directory(data_type, get_type, month, config='micapsdata.xml'):
-
-        root = ET.parse(config)
-        data_node = root.find("./MODEL_DATA[@name='%s']" % data_type)
-        for first_dir in data_node.iterfind("./FIRST_DIR"):
-            if first_dir.attrib['%s' % get_type] == 'True' or month in first_dir.attrib['%s' % get_type].split(','):
-                if not list(first_dir):  # 没有二级目录
-                    directory = os.path.join(data_type, first_dir.text)
-                    yield directory
-                for second_dir in first_dir.iterfind("./SECOND_DIR[@download='True']"):
-                    if second_dir.attrib['%s' % get_type] == 'True' or month in second_dir.attrib[
-                        '%s' % get_type].split(','):
-                        directory = os.path.join(data_type, first_dir.text, second_dir.text)
-                        yield directory
-
-    def bulk_download(self, data_type, output_directory, time='', config='micapsdata.xml'):
-
-        if time == '':
-            now = datetime.now()
-            today = now.strftime('%y%m%d')
-            nowtime = now.strftime('%y%m%d%H')
-            if nowtime < today + "12":
-                yesterday = now - timedelta(days=1)
-                start_predict = yesterday.strftime('%y%m%d') + '20'
-            else:
-                start_predict = today + '08'
-            time = start_predict  # "17020220"
-
-        for directory in self.get_directory(data_type, config):
-            out_path = os.path.join(output_directory, directory)
-            if not os.path.exists(out_path):
-                os.makedirs(out_path)
-
-            file_list = self.get_file_list(directory, time)
-            for file_name in file_list:
-                byteArray = self.get_data(directory, file_name)
-                with open(os.path.join(out_path, file_name), 'wb') as f:
-                    f.write(byteArray)
 
     def walk(self, root, no_unclipped=True):
         """
@@ -298,14 +334,14 @@ class GDSDataService(object):
              return
         else:
             for i in self.get_file_list(root):
-                
+
                 if no_unclipped and 'UNCLIPPED' in i: # 忽略UNCLIPPED目录
                     continue
-    
+
                 root_current = '/'.join([root,i]) # 必须是全路径，is_directory才能正确判断，路径不要使用\，否则出错
-    
-                if self.is_directory(root_current):# 当前目录是文件夹
-    
+
+                if self.is_dir(root_current):# 当前目录是文件夹
+
                     for j in self.get_file_list(root_current):
                         if self.is_file('/'.join([root_current,j])): # 当前目录已经是最后一级目录
                             yield root_current, []
@@ -318,9 +354,18 @@ class GDSDataService(object):
                         yield (root_current, next_dir)
 
                     yield from self.walk(root_current, no_unclipped) # 以当前目录作为根目录递归
-                    
+
                 else: #不是文件夹说明已经进入最终文件所在目录，直接退出，可以加速很多
                     break
 
-            
 
+    # todo 增加迭代器循环迭代数据
+    items = get_file_list
+
+    @classmethod
+    def add_one_connect(cls):
+        cls.total_connect_times += 1
+
+    @classmethod
+    def add_one_request(cls):
+        cls.total_request_times += 1

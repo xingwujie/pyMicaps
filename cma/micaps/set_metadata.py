@@ -6,34 +6,6 @@ import os, time
 from datetime import datetime,timedelta
 
 
-def get_mdfs_data_dirs(gds, source, no_unclipped=True):
-    """
-    获取分布式micaps中source数据的下的目录，默认不包含unclipped的目录
-    """
-    result = {}
-    l = list(gds.get_file_list(source))  # 第一级目录
-    if no_unclipped:
-        l = [i for i in l if 'UNCLIPPED' not in i]
-    l.sort()
-
-    for dir in l:
-        #todo 修改判断目录的方法，修改获取两级以上的目录问题
-        if gds.get_latest_data_name(os.path.join(source, dir), '*.024') != "" or gds.get_latest_data_name(
-                os.path.join(source, dir), '*.000') != "":  # 没有第二级目录
-
-            result[dir] = ''
-        else:
-            listdir = gds.get_file_list(os.path.join(source, dir))  # 第二级目录
-            list_dir = list(listdir)
-
-            if no_unclipped:
-                list_dir = [i for i in list_dir if 'UNCLIPPED' not in i]
-            list_dir.sort()
-
-            result[dir] = list_dir
-
-    return result
-
 
 def create_data_node(gds, data_source, data_name):
     """
@@ -137,24 +109,6 @@ def create_data_node(gds, data_source, data_name):
     return data_node
 
 
-def write_to_xml(gds, out_file='micapsdata.xml'):
-    data_nodes = list()
-    data_source = {'ECMWF_HR': u'欧洲高分辨率模式', 'GRAPES_GFS': u'GRAPES全球模式',
-                   'GRAPES_MESO_HR': u'GRAPES区域模式', 'T639': u'T639高分辨率模式',
-                   'JAPAN_HR': u'日本高分辨率模式', 'GERMAN_HR': u'德国高分辨率模式',
-                   'SHANGHAI_HR': u'华东区域模式'}
-    for data in data_source:
-        node = create_data_node(gds, data, data_source[data])
-        data_nodes.append(node)
-
-    root = ET.Element('MICAPSDATA')
-    for node in data_nodes:
-        root.append(node)
-
-    tree = ET.ElementTree(root)
-    tree.write(out_file, 'utf-8', True, short_empty_elements=False)
-
-
 def get_time_resolution(L):
     if len(L)==1:
         return str(L[0])
@@ -180,21 +134,6 @@ def parse_time_resolution(s):
         start, end, interval = [int(each) for each in i.split()]
         for j in range(start, end + interval, interval):
             yield '%03d' % int(j)
-
-
-def get_directory(self, data_type,get_type, month, config='micapsdata.xml'):
-
-    root = ET.parse(config)
-    data_node = root.find("./MODEL_DATA[@name='%s']" % data_type)
-    for first_dir in data_node.iterfind("./FIRST_DIR"):
-        if first_dir.attrib['%s'%get_type]=='True' or month in first_dir.attrib['%s'%get_type].split(','):
-            if not list(first_dir):#没有二级目录
-                directory = os.path.join(data_type, first_dir.text)
-                yield directory
-            for second_dir in first_dir.iterfind("./SECOND_DIR[@download='True']"):
-                if second_dir.attrib['%s'%get_type]=='True' or month in second_dir.attrib['%s'%get_type].split(','):
-                    directory = os.path.join(data_type, first_dir.text, second_dir.text)
-                    yield directory
 
 
 def default_start_predict_time(year_label='y'):

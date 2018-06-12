@@ -59,12 +59,12 @@ if __name__ == "__main__":
     #     print(i.name,': ', '%7.1f'%j)
 
 
-    #d = Grid('Y:\\GRAPES_MESO\\T2M_4\\18052808.066')
+    d = Grid('Y:\\GRAPES_MESO\\T2M_4\\18052808.066')
     #d = Grid(r'Y:\GRAPES_GFS\GLW_4\18052520.000')
     #d = Grid('ECMWF_HR/TMP_2M/18052708.000')
-    d = Grid('GRAPES_MESO_HR/TMP/2M_ABOVE_GROUND/18052708.012')
+    #d = Grid('GRAPES_MESO_HR/TMP/2M_ABOVE_GROUND/18052708.012')
     print(d.model_name)
-    print(d.level)
+    print(d.description)
     print(d.period)
 
      # ***********************测试程序*********************************"

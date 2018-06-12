@@ -5,7 +5,7 @@ from math import sqrt, fabs, ceil, floor
 import os
 import numpy as np
 import struct
-from cma.micaps.GDSDataService import GDSDataService
+from cma.micaps import GDSDataService
 import configparser
 
 
