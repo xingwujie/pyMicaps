@@ -1,5 +1,6 @@
 # -*- coding:utf-8 -*-
 # @author: ZHU Feng
+# @Xinxiang Meteorological Bureau
 
 from micaps import Grid
 from datetime import datetime, timedelta

@@ -1,4 +1,6 @@
 # -*- coding:utf-8 -*-
+# @author: ZHU Feng
+# @Xinxiang Meteorological Bureau
 
 import datetime
 from math import sqrt, fabs, ceil, floor
@@ -171,7 +173,6 @@ class Grid(object):
          self.bold_line  # 加粗线值
          ) = (float(i) for i in data_raw[17:22])
 
-
         # 数据部分，以一维数组表示
         self.data = [float(i) for i in data_raw[22:]]
 
@@ -305,7 +306,7 @@ class Grid(object):
 
     def to_file(self, out_name, formatted=False):
         with open(out_name, 'w') as f:
-            f.write('diamond 4 ' + self.doc + '\n')
+            f.write('diamond 4 ' + self.description + '\n')
             f.write(' '.join([self.year, self.month, self.day, self.hour, self.period, self.level, '\n']))
 
             f.write(

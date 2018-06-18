@@ -1,3 +1,7 @@
+# -*- coding:utf-8 -*-
+# @author: ZHU Feng
+# @Xinxiang Meteorological Bureau
+
 from cma.micaps import GDSDataService
 import time
 

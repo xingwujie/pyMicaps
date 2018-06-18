@@ -1,3 +1,7 @@
+# -*- coding:utf-8 -*-
+# @author: ZHU Feng
+# @Xinxiang Meteorological Bureau
+
 from cma.cimiss import DataQuery
 import json
 import pandas as pd
