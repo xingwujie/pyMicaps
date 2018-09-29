@@ -7,7 +7,7 @@ from math import sqrt, fabs, ceil, floor
 import os, shutil
 import numpy as np
 import struct
-from cma.micaps import GDSDataService
+from cma.gds import GDSDataService
 import configparser
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

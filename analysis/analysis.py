@@ -8,7 +8,7 @@ import os, time, json
 from collections import namedtuple
 import pandas as pd
 from cma.cimiss import DataQuery
-from cma.micaps import GDSDataService
+from cma.gds import GDSDataService
 
 
 def get_file_list(start_time, data_source):

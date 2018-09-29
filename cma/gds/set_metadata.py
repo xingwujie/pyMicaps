@@ -1,4 +1,6 @@
 # -*- coding:utf-8 -*-
+# @author: ZHU Feng
+# @Xinxiang Meteorological Bureau
 
 from .gds_data_service import GDSDataService
 import xml.etree.ElementTree as ET

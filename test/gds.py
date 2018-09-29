@@ -2,7 +2,7 @@
 # @author: ZHU Feng
 # @Xinxiang Meteorological Bureau
 
-from cma.micaps import GDSDataService
+from cma.gds import GDSDataService
 import time
 
 if __name__ == "__main__":
