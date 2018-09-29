@@ -32,7 +32,7 @@ if __name__ == '__main__':
     # 接口ID
     interface_id = "getSurfEleInRegionByTime"
 
-    #参数列表
+    # 参数列表
     params = {'dataCode': 'SURF_CHN_MUL_HOR_N', #资料代码（单个）
               'times': '20180508000000' ,  # 时间
               'adminCodes': '410700', # 国内行政编码

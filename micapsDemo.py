@@ -36,12 +36,12 @@ if __name__ == "__main__":
     #data_source = ['Y:/GRAPES_MESO/T2M_4']
     # d = Grid(r'Y:\ECMWF_HR\2T\999\18050620.000')
     # d = Grid('ECMWF_HR/TMP_2M/18043008.012')
-    data_source = ['GRAPES_MESO/T2M_4/18052720.012']#'Y:/ECMWF_HR/2T/999',
-    #for i in get_file_list('18050708', data_source):
-    #    print(Grid(i).timezone)
-    pd.set_option('display.max_columns', 500)
-    pd.set_option('display.width',1000)
-    pd.set_option('display.float_format', lambda x: '%7.1f'%x)
+    # data_source = ['GRAPES_MESO/T2M_4/18052720.012']#'Y:/ECMWF_HR/2T/999',
+    # #for i in get_file_list('18050708', data_source):
+    # #    print(Grid(i).timezone)
+    # pd.set_option('display.max_columns', 500)
+    # pd.set_option('display.width',1000)
+    # pd.set_option('display.float_format', lambda x: '%7.1f'%x)
 
 
 
@@ -62,13 +62,12 @@ if __name__ == "__main__":
     #     print(i.name,': ', '%7.1f'%j)
 
 
-    d = Grid('Y:\\GRAPES_MESO\\T2M_4\\18052808.066')
+    d = Grid('ECMWF_HR/TMP_2M/18092808.000')
     #d = Grid(r'Y:\GRAPES_GFS\GLW_4\18052520.000')
     #d = Grid('ECMWF_HR/TMP_2M/18052708.000')
     #d = Grid('GRAPES_MESO_HR/TMP/2M_ABOVE_GROUND/18052708.012')
-    print(d.model_name)
-    print(d.description)
-    print(d.period)
+
+    d.to_esri_asc('D:/test/2t_ec1.asc')
 
      # ***********************测试程序*********************************"
     end = time.clock()

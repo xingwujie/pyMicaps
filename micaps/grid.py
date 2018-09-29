@@ -4,16 +4,15 @@
 
 import datetime
 from math import sqrt, fabs, ceil, floor
-import os
+import os, shutil
 import numpy as np
 import struct
 from cma.micaps import GDSDataService
 import configparser
 
-
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 config = configparser.ConfigParser()
-config.read(os.path.join(BASE_DIR,'config/config.ini'))
+config.read(os.path.join(BASE_DIR, 'config/config.ini'))
 MDS_BASE_DIR = config['MICAPS_MDS']['path']
 
 
@@ -33,46 +32,49 @@ class Grid(object):
             with open(data_frame, 'rb') as f:
                 if struct.unpack('4s', f.read(4))[0] == b'mdfs':  # mdfs格式的本地文件
                     f.seek(0, 0)
-                    self._unpack_bytes(f.read())
+                    self.__unpack_bytes(f.read())
+                    self.file_type = 'm4'
                 else:  # micaps3格式
                     f.close()
                     with open(data_frame, 'r') as f:
-                        self._parse_strings(f.readlines())
+                        self.__parse_strings(f.readlines())
 
                     self.model_name = self.get_model_name(data_frame, MDS_BASE_DIR)
+                    self.file_type = 'm3'
 
         else:  # 直接从GDS分布式服务器调取
             with GDSDataService() as gds:
                 byte_arrays = gds.get_data(data_frame)
-                self._unpack_bytes(byte_arrays)
+                self.__unpack_bytes(byte_arrays)
+            self.file_type = 'm4'
 
         # 注意有时候经常遇到不规范的文件，比如将当前预报时间当做起报时间，而把时效当做0，甚至两者全是0，
         # 或者文件名是北京时，文件内使用的却是世界时，尤其是在m3文件中，经常有这种不规范的时间出现，
         # 所以最保险的方式还是从文件名中构建起报时间和预报时效时间，当然前提是文件名的命名也是规范的
 
-        self.start_time = datetime.datetime(self.year, self.month, self.day, self.hour)
-        self.valid_time = self.start_time + datetime.timedelta(hours=self.period)
+        self.init_time = datetime.datetime(self.year, self.month, self.day, self.hour)
+        self.forecast_time = self.init_time + datetime.timedelta(hours=self.period)
 
         # 从文件名构建起报时间和预报时效时间
-        start_time, period = os.path.basename(data_frame).split('.')
-        start_time = datetime.datetime.strptime(start_time, '%y%m%d%H')
-        valid_time = start_time + datetime.timedelta(hours=int(period))
+        init_time, period = os.path.basename(data_frame).split('.')
+        init_time = datetime.datetime.strptime(init_time, '%y%m%d%H')
+        forecast_time = init_time + datetime.timedelta(hours=int(period))
 
-        if self.start_time != start_time:
-            print('Warning: %s the start time is not unique!'%data_frame)
-            print('inner_start_time:', self.start_time, ' file_name_start_time:', start_time)
-            self.start_time = start_time
+        if self.init_time != init_time:
+            print('Warning: %s the start time is not unique!' % data_frame)
+            print('inner_start_time:', self.init_time, ' file_name_start_time:', init_time)
+            self.init_time = init_time
 
-        if self.valid_time != valid_time:
-            print('Warning: %s the valid time is not unique!'%data_frame)
-            print('inner_valid_time:', self.valid_time, ' file_name_valid_time:', valid_time)
-            self.valid_time = valid_time
+        if self.forecast_time != forecast_time:
+            print('Warning: %s the valid time is not unique!' % data_frame)
+            print('inner_valid_time:', self.forecast_time, ' file_name_valid_time:', forecast_time)
+            self.forecast_time = forecast_time
 
         # 最后按照指定时区输出时间
         time_delta = out_timezone - in_timezone
         if time_delta:
-            self.start_time += datetime.timedelta(hours=time_delta)
-            self.valid_time += datetime.timedelta(hours=time_delta)
+            self.init_time += datetime.timedelta(hours=time_delta)
+            self.forecast_time += datetime.timedelta(hours=time_delta)
 
         # 为一些常用字段起简单易用的别名，以x，y，row，col来标记相对更容易理解
         self.x_start = self.start_longitude  # 起始x，即起始经度
@@ -84,7 +86,9 @@ class Grid(object):
         self.cols = self.latitude_grid_number  # 列数，即纬向(x方向)格点数目
         self.rows = self.longitude_grid_number  # 行数，即经向(y方向)格点数目
 
-    def _unpack_bytes(self, byte_arrays):
+        self.data = np.array(self.data).reshape(self.rows, self.cols)
+
+    def __unpack_bytes(self, byte_arrays):
 
         (discriminator,  # 合法数据关键字,始终为小写的mdfs，不以mdfs开头的数据为非法数据
          self.type  # 数据类型, 4为模式标量数据，11为模式矢量数据，与原系统diamond 4和diamond 11含义一致
@@ -126,10 +130,9 @@ class Grid(object):
         data_num = self.latitude_grid_number * self.longitude_grid_number
         self.data = struct.unpack('%sf' % data_num, byte_arrays[278:])
 
-    def _parse_strings(self, str_lines):
+    def __parse_strings(self, str_lines):
 
         # 去除空行读入,将原文件分割成一维字符串数组
-
         data_raw = [word for line in str_lines if line.strip() for word in line.split()]
         if data_raw[0] != 'diamond':
             raise Exception('格式错误！')
@@ -189,11 +192,15 @@ class Grid(object):
             return [x - y for x, y in zip(self.data, other.data)]
 
     def value(self, row, col):
-        '''将格点数据看成self.latitude_grid_number*self.longitude_grid_number的二维数组，返回第row行，第col列的值，
-        row和col必须为整数，从0开始计数，坐标原点在左上角'''
+        """
+        返回第row行，第col列的值，row和col必须为整数，从0开始计数，?坐标原点在左上角?
+        :param row:
+        :param col:
+        :return:
+        """
         if row < 0 or row >= self.rows or col < 0 or col >= self.cols:
             raise Exception('out of data spatial range')
-        return self.data[row * self.cols + col]
+        return self.data[row, col]
 
     def IDW(self, lon_lat_s, power=2):
         """
@@ -263,7 +270,7 @@ class Grid(object):
             d4 = (lon_end - lon) ** 2 + (lat_end - lat) ** 2
 
             distance = [d1, d2, d3, d4]
-            min_index = distance.index(min(distance)) #根据周围四个点到目标位置的距离，选择最小距离的那个点的序号
+            min_index = distance.index(min(distance))  # 根据周围四个点到目标位置的距离，选择最小距离的那个点的序号
 
             # 目标位置周围四个格点的值
             v1 = (row_beg, col_beg)
@@ -272,63 +279,52 @@ class Grid(object):
             v4 = (row_end, col_end)
             vs = [v1, v2, v3, v4]
             row, col = vs[min_index]
-            z = self.value(row,col)
+            z = self.value(row, col)
 
             extracted_values.append(z)
 
         return extracted_values
 
-    def to_esri_ascii(self, out_name):
-        with open(out_name, 'w') as f:
-            y_start = self.y_end if self.dy < 0 else self.y_start
-            header = 'NCOLS %d\nNROWS %d\nXLLCENTER %f\nYLLCENTER %f\nCELLSIZE %f\nNODATA_VALUE 9999.0\n' % (
-                self.cols, self.rows, self.x_start, y_start, self.dx)
-            f.write(header)
+    def to_esri_asc(self, out_name):
 
-            if self.dy < 0:
-                f.write(' '.join(map(str, self.data)))
-            else:
-                for i in range(self.rows - 1, -1, -1):
-                    f.write(' '.join(
-                        map(str, self.data[i * self.cols:(i + 1) * self.cols])))
-                    f.write('\n')  # 必须加换行符，因为' '.join最后还多了一个空格，arcgis不能根据列数自动计算
-        try:
-            import arcpy
-        except ImportError:
-            print("""warning: you have no Esri's arcpy module, using to_esri_ascii method,
-                    you can still get the result, but without the associate coordinate information.
-                    you can use Esri's software like Arcmap to import the result and add the coordinate which is
-                    WGS1984""")
+        y_start = self.y_end if self.dy < 0 else self.y_start
+        header = 'NCOLS %d\nNROWS %d\nXLLCENTER %f\nYLLCENTER %f\nCELLSIZE %f\nNODATA_VALUE 9999.0' % (
+            self.cols, self.rows, self.x_start, y_start, self.dx)
+
+        if self.dy < 0:
+            data = self.data
         else:
-            # 定义坐标系//define the coordinate
-            sr = arcpy.SpatialReference('WGS 1984')
-            arcpy.DefineProjection_management(out_name, sr)
+            data = self.data[::-1, ::]  # 翻转数组，最底行变为第一行
 
-    def to_file(self, out_name, formatted=False):
-        with open(out_name, 'w') as f:
-            f.write('diamond 4 ' + self.description + '\n')
-            f.write(' '.join([self.year, self.month, self.day, self.hour, self.period, self.level, '\n']))
+        np.savetxt(out_name, data, fmt='%.2f', delimiter=' ', header=header, comments='')
 
-            f.write(
-                ' '.join(
-                    ['%.2f' % i for i in [self.dx, self.dy, self.x_start, self.x_end, self.y_start, self.y_end]]
-                    + ['%d' % i for i in [self.cols, self.rows]]
-                    + ['%.2f' % i for i in [self.isoline_space, self.isoline_start_value,
-                                            self.isoline_end_value, self.smooth_factor, self.bold_line]] + ['\n']
-                )
-            )
+        # try:
+        #     import arcpy
+        # except ImportError:
+        #     print("warning: you have no Esri's arcpy module, using to_esri_ascii method,\n"
+        #           "you can still get the result, but without the associate coordinate information.\n "
+        #           "you can use Esri's software like Arcmap to import the result and add the coordinate which is WGS1984")
+        # else:
+        #     # 定义坐标系//define the coordinate
+        #     sr = arcpy.SpatialReference('WGS 1984')
+        #     arcpy.DefineProjection_management(out_name, sr)
 
-            if not formatted:
-                f.write(' '.join(['%.2f' % i for i in self.data]))
+    def to_m3_file(self, out_name):
+        if self.file_type == 'm3':
+            # shutil.copy2(self.file_path, os.path.dirname(out_name))
+            # os.rename()
+            return
 
-    def to_numpy(self):
-        return np.array(self.data).reshape(self.rows, self.cols)
+        header = 'diamond 4 %s_%s(%s)(%s.%03d:%s)\n%s %d %s\n' % (
+            self.model_name, self.element, self.description,
+            self.init_time.strftime('%y%m%d%H'), self.period, self.forecast_time.strftime('%d%H'),
+            self.init_time.strftime('%y %m %d %H'), self.period, self.level) \
+                 + '%.2f %.2f %.2f %.2f %.2f %.2f %d %d %.2f %.2f %.2f 0 0' % (
+                     self.dx, self.dy, self.x_start, self.x_end, self.y_start, self.y_end, self.cols, self.rows,
+                     self.isoline_space, self.isoline_start_value, self.isoline_end_value)
 
-    def max(self):
-        return max(self.data)
+        np.savetxt(out_name, self.data, fmt='%.2f', delimiter=' ', header=header, comments='')
 
-    def min(self):
-        return min(self.data)
 
     def calc_stats(self):
         pass
@@ -341,7 +337,7 @@ class Grid(object):
             return self.nearest_neighbor(lon_lat_s)
 
     @staticmethod
-    def get_model_name(path,base_dir):
+    def get_model_name(path, base_dir):
         '''
         根据M3文件名的路径判断模式名
         '''
@@ -352,95 +348,95 @@ class Grid(object):
 
         if os.path.dirname(p) == p:
             # todo 根据文件内容匹配字典确定模式名
-        #else:
+            # else:
             raise Exception('无法获取m3文件的模式名')
 
         return os.path.basename(p).upper()
 
-class Diamond4(object):
-    diamond = 4
-
-    def __init__(self, data_frame, data_parameters=None):
-
-        if data_parameters is None and os.path.isfile(data_frame):
-            with open(data_frame, 'r') as f:
-                data_raw = [word for line in f.readlines() if line[:-1].strip()
-                            for word in line.split()]  # 去除空行读入,将原文件分割成一维字符串数组
-
-                self.doc = data_raw[2]  # .decode('gbk')  # 说明字符串
-
-                # 日期时间处理
-                (year,  # 年
-                 self.month,  # 月
-                 self.day,  # 日
-                 self.hour,  # 时
-                 self.period,  # 时效
-                 self.level) = data_raw[3:9]  # 层次
-
-                if len(year) == 2:
-                    year = ('20' + year) if int(year) < 49 else ('19' + year)
-                elif len(year) == 4:
-                    pass
-                else:
-                    raise Exception('year parameter error!')
-
-                self.year = year
-
-                # 注意start_time和valid_time没有统一规定，要看具体情况
-                self.start_time = datetime.datetime(int(year), int(self.month), int(self.day), int(self.hour))
-                self.valid_time = self.start_time + datetime.timedelta(hours=int(self.period))
-
-                (self.longitude_grid_space,  # 经度（x方向）格距, 一般为正
-                 self.latitude_grid_space,  # 纬度（y方向）格距，有正负号
-                 self.start_longitude,  # 起始经度
-                 self.end_longitude,  # 终止经度
-                 self.start_latitude,  # 起始纬度
-                 self.end_latitude) = (float(i) for i in data_raw[9:15])  # 终止纬度
-
-                (self.latitude_grid_number,  # 纬向(x方向)格点数目，即列数
-                 self.longitude_grid_number) = (int(i) for i in data_raw[15:17])  # 经向(y方向)格点数目，即行数
-
-                (self.isoline_space,  # 等值线间隔
-                 self.isoline_start_value,  # 等值线起始值
-                 self.isoline_end_value,  # 等值线终止值
-                 self.smooth_factor,  # 平滑系数
-                 self.bold_line) = (float(i) for i in data_raw[17:22])  # 加粗线值
-
-                # 数据部分，以一维数组表示
-                self.data = [float(i) for i in data_raw[22:]]
-
-                # 将数据的一些属性参数集合到一个字典中
-                self.parameters = {'doc': self.doc, 'year': self.year, 'month': self.month, 'day': self.day,
-                                   'hour': self.hour, 'period': self.period, 'level': self.level,
-                                   'start_time': self.start_time, 'valid_time': self.valid_time,
-                                   'longitude_grid_space': self.longitude_grid_space,
-                                   'latitude_grid_space': self.latitude_grid_space,
-                                   'start_longitude': self.start_longitude, 'end_longitude': self.end_longitude,
-                                   'start_latitude': self.start_latitude, 'end_latitude': self.end_latitude,
-                                   'latitude_grid_number': self.latitude_grid_number,
-                                   'longitude_grid_number': self.longitude_grid_number,
-                                   'isoline_space': self.isoline_space, 'isoline_start_value': self.isoline_start_value,
-                                   'isoline_end_value': self.isoline_end_value, 'smooth_factor': self.smooth_factor,
-                                   'bold_line': self.bold_line}
-                del data_raw
-
-                # 为一些常用字段起简单易用的别名，以x，y，row，col来标记相对更容易理解
-                self.x_start = self.start_longitude  # 起始x，即起始经度
-                self.x_end = self.end_longitude  # 终止x，即终止经度
-                self.dx = self.longitude_grid_space  # 经度（x方向）格距, 一般为正
-                self.y_start = self.start_latitude  # 起始y，即起始纬度
-                self.y_end = self.end_latitude  # 终止y，即终止纬度
-                self.dy = self.latitude_grid_space  # 纬度（y方向）格距，有正负号
-                self.cols = self.latitude_grid_number  # 列数，即纬向(x方向)格点数目
-                self.rows = self.longitude_grid_number  # 行数，即经向(y方向)格点数目
-
-        elif data_parameters is not None and isinstance(data_frame, (np.ndarray, list)):
-
-            self.data = data_frame if isinstance(data_frame, list) else data_frame.flatten().tolist()
-            self.parameters = data_parameters
-            for key in data_parameters:
-                exec('self.' + key + '=' + repr(data_parameters[key]))
-
-        else:
-            raise Exception('input parameters error!')
-
+# class Diamond4(object):
+#     diamond = 4
+#
+#     def __init__(self, data_frame, data_parameters=None):
+#
+#         if data_parameters is None and os.path.isfile(data_frame):
+#             with open(data_frame, 'r') as f:
+#                 data_raw = [word for line in f.readlines() if line[:-1].strip()
+#                             for word in line.split()]  # 去除空行读入,将原文件分割成一维字符串数组
+#
+#                 self.doc = data_raw[2]  # .decode('gbk')  # 说明字符串
+#
+#                 # 日期时间处理
+#                 (year,  # 年
+#                  self.month,  # 月
+#                  self.day,  # 日
+#                  self.hour,  # 时
+#                  self.period,  # 时效
+#                  self.level) = data_raw[3:9]  # 层次
+#
+#                 if len(year) == 2:
+#                     year = ('20' + year) if int(year) < 49 else ('19' + year)
+#                 elif len(year) == 4:
+#                     pass
+#                 else:
+#                     raise Exception('year parameter error!')
+#
+#                 self.year = year
+#
+#                 # 注意start_time和valid_time没有统一规定，要看具体情况
+#                 self.init_time = datetime.datetime(int(year), int(self.month), int(self.day), int(self.hour))
+#                 self.forecast_time = self.init_time + datetime.timedelta(hours=int(self.period))
+#
+#                 (self.longitude_grid_space,  # 经度（x方向）格距, 一般为正
+#                  self.latitude_grid_space,  # 纬度（y方向）格距，有正负号
+#                  self.start_longitude,  # 起始经度
+#                  self.end_longitude,  # 终止经度
+#                  self.start_latitude,  # 起始纬度
+#                  self.end_latitude) = (float(i) for i in data_raw[9:15])  # 终止纬度
+#
+#                 (self.latitude_grid_number,  # 纬向(x方向)格点数目，即列数
+#                  self.longitude_grid_number) = (int(i) for i in data_raw[15:17])  # 经向(y方向)格点数目，即行数
+#
+#                 (self.isoline_space,  # 等值线间隔
+#                  self.isoline_start_value,  # 等值线起始值
+#                  self.isoline_end_value,  # 等值线终止值
+#                  self.smooth_factor,  # 平滑系数
+#                  self.bold_line) = (float(i) for i in data_raw[17:22])  # 加粗线值
+#
+#                 # 数据部分，以一维数组表示
+#                 self.data = [float(i) for i in data_raw[22:]]
+#
+#                 # 将数据的一些属性参数集合到一个字典中
+#                 self.parameters = {'doc': self.doc, 'year': self.year, 'month': self.month, 'day': self.day,
+#                                    'hour': self.hour, 'period': self.period, 'level': self.level,
+#                                    'init_time': self.init_time, 'forecast_time': self.forecast_time,
+#                                    'longitude_grid_space': self.longitude_grid_space,
+#                                    'latitude_grid_space': self.latitude_grid_space,
+#                                    'start_longitude': self.start_longitude, 'end_longitude': self.end_longitude,
+#                                    'start_latitude': self.start_latitude, 'end_latitude': self.end_latitude,
+#                                    'latitude_grid_number': self.latitude_grid_number,
+#                                    'longitude_grid_number': self.longitude_grid_number,
+#                                    'isoline_space': self.isoline_space, 'isoline_start_value': self.isoline_start_value,
+#                                    'isoline_end_value': self.isoline_end_value, 'smooth_factor': self.smooth_factor,
+#                                    'bold_line': self.bold_line}
+#                 del data_raw
+#
+#                 # 为一些常用字段起简单易用的别名，以x，y，row，col来标记相对更容易理解
+#                 self.x_start = self.start_longitude  # 起始x，即起始经度
+#                 self.x_end = self.end_longitude  # 终止x，即终止经度
+#                 self.dx = self.longitude_grid_space  # 经度（x方向）格距, 一般为正
+#                 self.y_start = self.start_latitude  # 起始y，即起始纬度
+#                 self.y_end = self.end_latitude  # 终止y，即终止纬度
+#                 self.dy = self.latitude_grid_space  # 纬度（y方向）格距，有正负号
+#                 self.cols = self.latitude_grid_number  # 列数，即纬向(x方向)格点数目
+#                 self.rows = self.longitude_grid_number  # 行数，即经向(y方向)格点数目
+#
+#         elif data_parameters is not None and isinstance(data_frame, (np.ndarray, list)):
+#
+#             self.data = data_frame if isinstance(data_frame, list) else data_frame.flatten().tolist()
+#             self.parameters = data_parameters
+#             for key in data_parameters:
+#                 exec('self.' + key + '=' + repr(data_parameters[key]))
+#
+#         else:
+#             raise Exception('input parameters error!')
+#

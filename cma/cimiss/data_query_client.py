@@ -1,3 +1,5 @@
+# -*- coding:utf-8 -*-
+
 import sys, os, urllib, socket
 import traceback
 import urllib.request
