@@ -12,7 +12,7 @@ import configparser
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 config = configparser.ConfigParser()
-config.read(os.path.join(BASE_DIR, 'config/config.ini'))
+config.read(os.path.join(BASE_DIR, 'config/private_config.ini'))
 MDS_BASE_DIR = config['MICAPS_MDS']['path']
 
 

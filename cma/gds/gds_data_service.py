@@ -18,7 +18,7 @@ else:
 #todo 读取配置信息的方法还要完善一下
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 config = configparser.ConfigParser()
-config.read(os.path.join(BASE_DIR,'config/config.ini'))
+config.read(os.path.join(BASE_DIR,'config/private_config.ini'))
 ip = config['MICAPS_MDFS_GDS']['ip']
 port = config['MICAPS_MDFS_GDS'].getint('port')
 

@@ -10,7 +10,7 @@ import Ice, cma.cimiss
 #获取CIMISS地址信息和账号信息
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 config = configparser.ConfigParser()
-config.read(os.path.join(BASE_DIR,'config/config.ini'))
+config.read(os.path.join(BASE_DIR,'config/private_config.ini'))
 ip = config['CIMISS_MUSIC']['ip']
 port = config['CIMISS_MUSIC'].getint('port')
 user_id = config['CIMISS_MUSIC']['user_id']
